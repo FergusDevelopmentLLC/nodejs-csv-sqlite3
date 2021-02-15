@@ -7,10 +7,10 @@ const app = express()
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
 
-//utils.createSeedData()
+utils.parseCsv()
 
-let db
-let dbFileName = 'csv_net.db'
+// let db
+// let dbFileName = 'csv_net.db'
 
 app.get('/', (req, res, next) => {
   res.status(200).json(`Hello from nodejs-csv-sqlite3. The current server date/time is: ${new Date()}`)
