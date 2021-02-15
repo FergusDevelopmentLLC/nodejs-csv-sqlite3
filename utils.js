@@ -1,142 +1,47 @@
-const fs = require("fs")
-const sqlite3 = require('sqlite3').verbose()
+const sqlite3 = require('sqlite3')
 const fastcsv = require("fast-csv")
+const request = require("request")
 
-const createSeedData = () => {
-  
-  let db = new sqlite3.Database('player.db')
+const dbFileName = 'csv_import.db'
 
-  db.serialize(() => {
-
-    const data = [
-      {
-        name: 'Ruth',
-        city: 'New York',
-        email: 'babe@yankees.com'
-      },
-      {
-        name: 'Jordan',
-        city: 'Chicago',
-        email: 'jump23@bulls.com'
-      },
-      {
-        name: 'Brady',
-        city: 'Tampa Bay',
-        email: 'tbrady@buccaneers.com'
-      }
-    ]
-  
-    db.run( `
-            create table if not exists  
-            players (
-              name TEXT,
-              city TEXT,
-              email TEXT
-             )
-            `)
-  
-    data.forEach((player) => {
-      db.run(`INSERT INTO players (name, city, email) values ('${player.name}','${player.city}','${player.email}')`)//should use parameterized sql here
-    })
-    
-    db.each("SELECT name, city, email FROM players", (err, row) => {
-      console.log(`${row.name}, ${row.city}, ${row.email}`)
-    })
-  
-  })
-
-  db.close()
-}
-
-const getPlayers = (db) => {
-  return new Promise(resolve => {
-    const data = []
-    db.all('SELECT name, city, email FROM players', [] , (err, rows) => {
-      if(rows && rows.length > 0) rows.forEach((row)=> data.push(row))
-      resolve(data)
-    })
-  })
-}
-
-const getPlayerByEmail = (db, email) => {
-  return new Promise(resolve => {
-    const data = []
-    const sql = `SELECT name, city, email FROM players WHERE email='${email}'`
-    
-    console.log('dangerous SQL:', sql)
-
-    db.all(sql, [] , (err, rows) => {
-      if(rows && rows.length > 0) rows.forEach((row)=> data.push(row))
-      resolve(data)
-    })
-  })
-}
-
-const getPlayerByEmailStrong = (db, email) => {
-  return new Promise(resolve => {
-    const data = []
-    const sql = `SELECT name, city, email FROM players WHERE email = ?`
-    db.all(sql,[email], (err, rows) => {
-      if(rows && rows.length > 0) rows.forEach((row)=> data.push(row))
-      resolve(data)
-    })
-  })
-}
-
-const parseCsv = () => {
+const parseCsvFrom = (url) => {
 
   console.log('parseCsv')
 
-  let db = new sqlite3.Database('csv_dump.db')
-  const tableName = `csv_${ Date.now().toString() }`
-  const tableCreationSql = `
-  create table if not exists ${ tableName }
-  (
-    id INTEGER,
-    name TEXT,
-    description TEXT
-   )
-  `
-  console.log('tableCreationSql', tableCreationSql)
-  db.run(tableCreationSql)
+  const db = new sqlite3.Database(dbFileName)
 
-  let stream = fs.createReadStream("categories.csv")
-  console.log('stream', stream)
+  const targetTable = `csv_import_${ Date.now().toString() }`
   
-  let csvData = []
-  let csvStream = fastcsv
-    .parse()
-    .on("data", function(data) {
+  const inserts = []
+  const csvData = []
+
+  fastcsv.parseStream(request(url))
+    .on('data', (data) => {
       csvData.push(data)
     })
-    .on("end", function() {
-      console.log('csvData', csvData)
-      csvData.shift() // remove the first line: header
+    .on('end', () => {
+      
+      let header = csvData.shift()//get the first header line
+      
+      csvData.forEach((columnValues) => {
+        let insert = `INSERT INTO ${ targetTable } (${header.map(value => value).join(', ')}) VALUES (${header.map(value => '?')})`
+        inserts.push([insert, [...columnValues]])
+      })
 
-      // return new Promise(resolve => {
-      //   const data = []
-      //   const sql = `INSERT INTO category (id, name, description, created_at) VALUES ?`
-      //   db.query(sql, [csvData], (error, response) => {
-      //     console.log(error || response);
-      //   });
+      const columns = header.map((value) => {
+        return `${value} TEXT`
+      }).join(",")
+      
+      const tableCreationSql = `create table if not exists ${targetTable} ( ${columns} )`
+      
+      db.run(tableCreationSql, () => {
+        inserts.forEach((insert) => {
+          db.run(insert[0], insert[1])
+        })
+        db.close()
+      })
+    })
 
-      //   db.all(sql,[email], (err, rows) => {
-      //     if(rows && rows.length > 0) rows.forEach((row)=> data.push(row))
-      //     resolve(data)
-      //   })
-      // })
-
-      // open the connection
-      // connection.connect(error => {
-      //   if (error) {
-      //     console.error(error);
-      //   } else {
-      //     let query =
-      //       "INSERT INTO category (id, name, description, created_at) VALUES ?";
-      //     connection.query(query, [csvData], (error, response) => {
-      //       console.log(error || response);
-      //     
-  })
 }
 
-module.exports = { createSeedData, getPlayers, getPlayerByEmail, getPlayerByEmailStrong, parseCsv }
+module.exports = { parseCsvFrom }
