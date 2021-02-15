@@ -1,43 +1,26 @@
 const express = require('express')
 const utils = require('./utils')
 const bodyParser = require('body-parser')
-const sqlite3 = require('sqlite3').verbose()
 
 const app = express()
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
 
-utils.parseCsv()
+// let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/f0ea84b0d4d50604c405f5b74db1b498/raw/863d21945fe993f224ee8ad3771930568568a7c3/category.csv`
+// utils.parseCsvFrom(url)
 
-// let db
-// let dbFileName = 'csv_net.db'
+// url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/ea92be31b5382266079042e50d4f7de6/raw/2cdd490a0b43b4e3b9906f2bc2e269ec6a63dc61/comedians.csv`
+// utils.parseCsvFrom(url)
+
+//url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/ea92be31b5382266079042e50d4f7de6/raw/2cdd490a0b43b4e3b9906f2bc2e269ec6a63dc61/comedians.csv`
+//utils.parseCsvFrom(url)
+
+url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
+utils.parseCsvFrom(url)
 
 app.get('/', (req, res, next) => {
   res.status(200).json(`Hello from nodejs-csv-sqlite3. The current server date/time is: ${new Date()}`)
 })
-
-// app.get('/players', async (req, res, next) => {
-//   db = new sqlite3.Database(dbFileName)
-//   const players = await utils.getPlayers(db)
-//   db.close()
-//   res.status(200).json(players)
-// })
-
-// app.post('/playerByEmail', async (req, res, next) => {
-//   db = new sqlite3.Database(dbFileName)
-//   let emailAddress = req.body.email
-//   const player = await utils.getPlayerByEmail(db, emailAddress)
-//   db.close()
-//   res.status(200).json(player)
-// })
-
-// app.post('/playerByEmailStrong', async (req, res, next) => {
-//   db = new sqlite3.Database(dbFileName)
-//   let emailAddress = req.body.email
-//   const player = await utils.getPlayerByEmailStrong(db, emailAddress)
-//   db.close()
-//   res.status(200).json(player)
-// })
 
 const server = app.listen(4070, () => {
   console.log('App listening at port %s', server.address().port)
