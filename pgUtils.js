@@ -1,6 +1,6 @@
 const fastcsv = require("fast-csv")
 const request = require("request")
-const { Client } = require('pg')
+const { Client } = require("pg")
 
 const parseCsvToPgFrom = async (url) => {
 
@@ -11,6 +11,8 @@ const parseCsvToPgFrom = async (url) => {
   const inserts = []
   const csvData = []
 
+  console.log("targetTable01", targetTable)
+
   fastcsv.parseStream(request(url))
     .on('data', (data) => {
       csvData.push(data)
@@ -18,6 +20,8 @@ const parseCsvToPgFrom = async (url) => {
     .on('end', async () => {
       
       let header = csvData.shift()//get the first header line
+
+      console.log("targetTable02", targetTable)
       
       //build insert statements dynamically
       csvData.forEach((columnValues) => {
@@ -26,7 +30,9 @@ const parseCsvToPgFrom = async (url) => {
         inserts.push([insert, [...columnValues]])// example: ['INSERT INTO targetTable (col1,col2,col3) VALUES ($1,$2,$3)]', ['-121.225442','38.185269','Elaine Mary Dornton Dvm']
       })
 
-      try {
+      // try {
+
+        console.log("targetTable03", targetTable)
 
         const columnsString = header.map(column => `${column} character varying`).join(",")
 
@@ -36,14 +42,17 @@ const parseCsvToPgFrom = async (url) => {
         //TODO, parameters don't seem to work with this sql
         await client.query(`ALTER TABLE ${targetTable} OWNER TO geodevdb;`)
 
-        inserts.forEach(async insert => await client.query(insert[0], insert[1]))
-        
-      } catch (err) {
-        console.log('error', err)
-        await client.end()
-      }
+        await inserts.forEach(async insert => await client.query(insert[0], insert[1]))
+
+        const res = await client.query(`SELECT * from ${targetTable}`, null)
+        console.log(res.rows)
+
+      // } catch (err) {
+      //   console.log('error', err)
+      //   await client.end()
+      // }
       
-      return targetTable
+      
   
   })
 }
