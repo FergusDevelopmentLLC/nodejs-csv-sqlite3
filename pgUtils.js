@@ -2,7 +2,62 @@ const fastcsv = require("fast-csv")
 const request = require("request")
 const { Client } = require("pg")
 
-const parseCsvToPgFrom = async (url) => {
+const states = [
+  {statefp : "01", name : "Alabama"},
+  {statefp : "02", name : "Alaska"},
+  {statefp : "04", name : "Arizona"},
+  {statefp : "05", name : "Arkansas"},
+  {statefp : "06", name : "California"},
+  {statefp : "08", name : "Colorado"},
+  {statefp : "09", name : "Connecticut"},
+  {statefp : "10", name : "Delaware"},
+  {statefp : "11", name : "District of Columbia"},
+  {statefp : "12", name : "Florida"},
+  {statefp : "13", name : "Georgia"},
+  {statefp : "15", name : "Hawaii"},
+  {statefp : "16", name : "Idaho"},
+  {statefp : "17", name : "Illinois"},
+  {statefp : "18", name : "Indiana"},
+  {statefp : "19", name : "Iowa"},
+  {statefp : "20", name : "Kansas"},
+  {statefp : "21", name : "Kentucky"},
+  {statefp : "22", name : "Louisiana"},
+  {statefp : "23", name : "Maine"},
+  {statefp : "24", name : "Maryland"},
+  {statefp : "25", name : "Massachusetts"},
+  {statefp : "26", name : "Michigan"},
+  {statefp : "27", name : "Minnesota"},
+  {statefp : "28", name : "Mississippi"},
+  {statefp : "29", name : "Missouri"},
+  {statefp : "30", name : "Montana"},
+  {statefp : "31", name : "Nebraska"},
+  {statefp : "32", name : "Nevada"},
+  {statefp : "33", name : "New Hampshire"},
+  {statefp : "34", name : "New Jersey"},
+  {statefp : "35", name : "New Mexico"},
+  {statefp : "36", name : "New York"},
+  {statefp : "37", name : "North Carolina"},
+  {statefp : "38", name : "North Dakota"},
+  {statefp : "39", name : "Ohio"},
+  {statefp : "40", name : "Oklahoma"},
+  {statefp : "41", name : "Oregon"},
+  {statefp : "42", name : "Pennsylvania"},
+  {statefp : "44", name : "Rhode Island"},
+  {statefp : "45", name : "South Carolina"},
+  {statefp : "46", name : "South Dakota"},
+  {statefp : "47", name : "Tennessee"},
+  {statefp : "48", name : "Texas"},
+  {statefp : "49", name : "Utah"},
+  {statefp : "50", name : "Vermont"},
+  {statefp : "51", name : "Virginia"},
+  {statefp : "53", name : "Washington"},
+  {statefp : "54", name : "West Virginia"},
+  {statefp : "55", name : "Wisconsin"},
+  {statefp : "56", name : "Wyoming"},
+  {statefp : "72", name : "Puerto Rico"}
+]
+
+const parseCsvToPgFrom = async (url, state) => {
 
   const client = new Client()
   await client.connect()
@@ -10,8 +65,6 @@ const parseCsvToPgFrom = async (url) => {
   const targetTable = `csv_import_${ Date.now().toString() }`
   const inserts = []
   const csvData = []
-
-  console.log("targetTable01", targetTable)
 
   fastcsv.parseStream(request(url))
     .on('data', (data) => {
@@ -21,8 +74,6 @@ const parseCsvToPgFrom = async (url) => {
       
       let header = csvData.shift()//get the first header line
 
-      console.log("targetTable02", targetTable)
-      
       //build insert statements dynamically
       csvData.forEach((columnValues) => {
         let insert = `INSERT INTO ${ targetTable } (${header.map(value => value).join(',')}) VALUES (${header.map((value, i) => `$${i + 1}`)});`
@@ -31,8 +82,6 @@ const parseCsvToPgFrom = async (url) => {
       })
 
       // try {
-
-        console.log("targetTable03", targetTable)
 
         const columnsString = header.map(column => `${column} character varying`).join(",")
 
@@ -45,7 +94,82 @@ const parseCsvToPgFrom = async (url) => {
         await inserts.forEach(async insert => await client.query(insert[0], insert[1]))
 
         const res = await client.query(`SELECT * from ${targetTable}`, null)
-        console.log(res.rows)
+        // console.log(res.rows)
+
+        const statefp = states.find(st => st.name === state).statefp
+
+        // const sql = `
+        //             select 
+        //             county.geom,
+        //             county.name, 
+        //             max(pop.type) as type,
+        //             count(geo_points.geom) as geo_points_count,
+        //             max(pop.pop_2019) as pop_2019,
+        //             CASE 
+        //               WHEN count(geo_points.geom) = 0 
+        //               THEN max(pop.pop_2019) 
+        //               ELSE max(pop.pop_2019) / count(geo_points.geom) 
+        //             END
+        //             AS persons_per_location
+        //           from county county
+        //           left join 
+        //             (
+        //               SELECT ST_SetSRID(ST_MAKEPOINT(longitude::double precision, latitude::double precision),4326) as geom, longitude, latitude, name
+        //               FROM public.${targetTable}
+        //             )
+        //             as geo_points on ST_WITHIN(geo_points.geom, county.geom)
+        //           left join population_county pop on pop.name = county.name
+        //           where county.statefp = '${statefp}'
+        //           and pop.statefp = '${statefp}'
+        //           group by county.geom, county.name
+        //           order by persons_per_location desc;
+        
+        const sql = `
+                      SELECT jsonb_build_object(
+                        'type',     'FeatureCollection',
+                        'features', jsonb_agg(features.feature)
+                      )
+                      FROM (
+                      SELECT jsonb_build_object(
+                      'type',       'Feature',
+                      'geometry',   ST_AsGeoJSON(geom)::jsonb,
+                      'properties', to_jsonb(inputs) - 'geom'
+                      ) AS feature
+                      FROM (
+                        SELECT 
+                          county.geom,
+                          county.name, 
+                          max(pop.type) as type,
+                          COUNT(geo_points.geom) as geo_points_count,
+                          MAX(pop.pop_2019) as pop_2019,
+                          CASE 
+                            WHEN count(geo_points.geom) = 0 THEN max(pop.pop_2019) 
+                            ELSE max(pop.pop_2019) / count(geo_points.geom) 
+                          END
+                          AS persons_per_location
+                        FROM county county
+                        LEFT JOIN
+                        (
+                          SELECT 
+                            ST_SetSRID(ST_MAKEPOINT(longitude::double precision, latitude::double precision),4326) as geom, 
+                            longitude, latitude, name
+                          FROM public.${targetTable}
+                        )
+                        AS geo_points on ST_WITHIN(geo_points.geom, county.geom)
+                        LEFT JOIN population_county pop on pop.name = county.name
+                        WHERE county.statefp = '${statefp}'
+                        AND pop.statefp = '${statefp}'
+                        GROUP BY county.geom, county.name
+                        ORDER BY persons_per_location desc
+                      
+                          ) inputs) features;
+                    `
+
+      console.log('sql', sql)
+      let geo = await client.query(sql)
+      console.log('geo', geo)
+      
+              
 
       // } catch (err) {
       //   console.log('error', err)
@@ -58,3 +182,4 @@ const parseCsvToPgFrom = async (url) => {
 }
 
 module.exports = { parseCsvToPgFrom }
+
