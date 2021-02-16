@@ -74,5 +74,25 @@ order by animal_hospital_count desc;
 
 CREATE EXTENSION postgis;
 
+CREATE TABLE population_county (
+  id SERIAL,
+  statefp VARCHAR(2),
+  state_name VARCHAR(255),
+  name VARCHAR(255),
+  type VARCHAR(100),
+  pop_2019 integer,
+  PRIMARY KEY (id)
+);
+
+COPY population_county(id, statefp, state_name, name, type, pop_2019)
+FROM '/tmp/county_pop_2019.csv'
+DELIMITER ','
+CSV HEADER;
+
+select * from 
+population_county;
+
+
+
 
 
