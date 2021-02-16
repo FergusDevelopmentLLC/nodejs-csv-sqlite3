@@ -18,28 +18,24 @@ const parseCsvToPgFrom = async (url) => {
     .on('end', async () => {
       
       let header = csvData.shift()//get the first header line
-      console.log('header', header)
       
+      //build insert statements dynamically
       csvData.forEach((columnValues) => {
         let insert = `INSERT INTO ${ targetTable } (${header.map(value => value).join(',')}) VALUES (${header.map((value, i) => `$${i + 1}`)});`
-        inserts.push([insert, [...columnValues]])
+        //into the inserts array, push the parameterized sql statement and the array of parameters
+        inserts.push([insert, [...columnValues]])// example: ['INSERT INTO targetTable (col1,col2,col3) VALUES ($1,$2,$3)]', ['-121.225442','38.185269','Elaine Mary Dornton Dvm']
       })
-
-      const columns = header.map((value) => {
-        return `${value} character varying`
-      }).join(",")
-      
-      //TODO, parameterize???
-      const tableCreationSql = `CREATE TABLE ${targetTable}
-                                ( ${columns} )
-                                WITH (
-                                  OIDS=FALSE
-                                );`
 
       try {
 
-        await client.query(tableCreationSql)
-        await client.query( `ALTER TABLE ${targetTable} OWNER TO geodevdb;`)
+        const columnsString = header.map(column => `${column} character varying`).join(",")
+
+        //TODO, parameters don't seem to work with this sql
+        await client.query(`CREATE TABLE ${targetTable} ( ${columnsString} ) WITH ( OIDS=FALSE );`)
+        
+        //TODO, parameters don't seem to work with this sql
+        await client.query(`ALTER TABLE ${targetTable} OWNER TO geodevdb;`)
+
         inserts.forEach(async insert => await client.query(insert[0], insert[1]))
         
       } catch (err) {
