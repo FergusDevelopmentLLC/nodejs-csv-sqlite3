@@ -11,15 +11,27 @@ app.use(bodyParser.urlencoded({ extended: true }))
 
 const populate = async () => {
   let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
-  let newTable = await pgUtils.parseCsvToPgFrom(url)
+  let newTable = await pgUtils.parseCsvToPgFrom(url, "California")
   console.log('newTable', newTable)
 }
 
-populate()
+//populate()
 
 app.get('/', (req, res, next) => {
   res.status(200).json(`Hello from nodejs-csv-sqlite3. The current server date/time is: ${new Date()}`)
 })
+
+app.get('/populate', async (req, res, next) => {
+
+  let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
+  let geojson = await pgUtils.parseCsvToPgFrom(url, "California")
+  
+  console.log('geojson', geojson)
+  
+  res.status(200).json(geojson)
+})
+
+  
 
 app.post('/aggregateByCounty', (req, res, next) => {
   // let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
