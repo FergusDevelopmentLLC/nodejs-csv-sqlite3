@@ -6,10 +6,8 @@ ALTER TABLE csv_import_1613448864204 DROP COLUMN geom;
 
 ALTER TABLE csv_import_1613448864204 ADD COLUMN geom point;
 
-alter table csv_import_1613448864204 alter column latitude type double precision using latitude::double precision;
-alter table csv_import_1613448864204 alter column longitude type double precision using longitude::double precision;
-
-UPDATE csv_import_1613448864204 SET geom = ST_SetSRID(ST_MakePoint(longitude::float, latitude::float), 4326);
+https://postgis.net/install/
+CREATE EXTENSION postgis;
 
 SELECT longitude, latitude, name, ST_MAKEPOINT(longitude::double precision, latitude::double precision) as geom
 FROM public.csv_import_1613448864204
