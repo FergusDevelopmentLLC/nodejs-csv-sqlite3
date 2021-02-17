@@ -57,16 +57,18 @@ const states = [
   {statefp : "72", name : "Puerto Rico"}
 ]
 
-const parseCsvToPgFrom = async (url, state) => {
+const getGeoJsonFor = (csvUrl, stateName) => {
 
-  const client = new Client()
-  await client.connect()
-  
-  const targetTable = `csv_import_${ Date.now().toString() }`
-  const inserts = []
-  const csvData = []
+  return new Promise(async (resolve) => {
+    
+    const client = new Client()
+    await client.connect()
 
-  fastcsv.parseStream(request(url))
+    const targetTable = `csv_import_${ Date.now().toString() }`
+    const inserts = []
+    const csvData = []
+
+    await fastcsv.parseStream(request(csvUrl))
     .on('data', (data) => {
       csvData.push(data)
     })
@@ -81,105 +83,69 @@ const parseCsvToPgFrom = async (url, state) => {
         inserts.push([insert, [...columnValues]])// example: ['INSERT INTO targetTable (col1,col2,col3) VALUES ($1,$2,$3)]', ['-121.225442','38.185269','Elaine Mary Dornton Dvm']
       })
 
-      // try {
+      const columnsString = header.map(column => `${column} character varying`).join(",")
 
-        const columnsString = header.map(column => `${column} character varying`).join(",")
-
-        //TODO, parameters don't seem to work with this sql
-        await client.query(`CREATE TABLE ${targetTable} ( ${columnsString} ) WITH ( OIDS=FALSE );`)
+      //TODO, parameters don't seem to work with this sql
+      await client.query(`CREATE TABLE ${targetTable} ( ${columnsString} ) WITH ( OIDS=FALSE );`)
         
-        //TODO, parameters don't seem to work with this sql
-        await client.query(`ALTER TABLE ${targetTable} OWNER TO geodevdb;`)
+      //TODO, parameters don't seem to work with this sql
+      await client.query(`ALTER TABLE ${targetTable} OWNER TO geodevdb;`)
 
-        await inserts.forEach(async insert => await client.query(insert[0], insert[1]))
+      inserts.forEach(async insert => await client.query(insert[0], insert[1]))
 
-        const res = await client.query(`SELECT * from ${targetTable}`, null)
-        // console.log(res.rows)
+      //const res = await client.query(`SELECT * from ${targetTable}`, null)
+      // console.log(res.rows)
 
-        const statefp = states.find(st => st.name === state).statefp
-
-        // const sql = `
-        //             select 
-        //             county.geom,
-        //             county.name, 
-        //             max(pop.type) as type,
-        //             count(geo_points.geom) as geo_points_count,
-        //             max(pop.pop_2019) as pop_2019,
-        //             CASE 
-        //               WHEN count(geo_points.geom) = 0 
-        //               THEN max(pop.pop_2019) 
-        //               ELSE max(pop.pop_2019) / count(geo_points.geom) 
-        //             END
-        //             AS persons_per_location
-        //           from county county
-        //           left join 
-        //             (
-        //               SELECT ST_SetSRID(ST_MAKEPOINT(longitude::double precision, latitude::double precision),4326) as geom, longitude, latitude, name
-        //               FROM public.${targetTable}
-        //             )
-        //             as geo_points on ST_WITHIN(geo_points.geom, county.geom)
-        //           left join population_county pop on pop.name = county.name
-        //           where county.statefp = '${statefp}'
-        //           and pop.statefp = '${statefp}'
-        //           group by county.geom, county.name
-        //           order by persons_per_location desc;
-        
-        const sql = `
-                      SELECT jsonb_build_object(
-                        'type',     'FeatureCollection',
-                        'features', jsonb_agg(features.feature)
-                      )
-                      FROM (
-                      SELECT jsonb_build_object(
-                      'type',       'Feature',
-                      'geometry',   ST_AsGeoJSON(geom)::jsonb,
-                      'properties', to_jsonb(inputs) - 'geom'
-                      ) AS feature
-                      FROM (
-                        SELECT 
-                          county.geom,
-                          county.name, 
-                          max(pop.type) as type,
-                          COUNT(geo_points.geom) as geo_points_count,
-                          MAX(pop.pop_2019) as pop_2019,
-                          CASE 
-                            WHEN count(geo_points.geom) = 0 THEN max(pop.pop_2019) 
-                            ELSE max(pop.pop_2019) / count(geo_points.geom) 
-                          END
-                          AS persons_per_location
-                        FROM county county
-                        LEFT JOIN
-                        (
-                          SELECT 
-                            ST_SetSRID(ST_MAKEPOINT(longitude::double precision, latitude::double precision),4326) as geom, 
-                            longitude, latitude, name
-                          FROM public.${targetTable}
-                        )
-                        AS geo_points on ST_WITHIN(geo_points.geom, county.geom)
-                        LEFT JOIN population_county pop on pop.name = county.name
-                        WHERE county.statefp = '${statefp}'
-                        AND pop.statefp = '${statefp}'
-                        GROUP BY county.geom, county.name
-                        ORDER BY persons_per_location desc
-                      
-                          ) inputs) features;
-                    `
-
-      console.log('sql', sql)
+      const statefp = states.find(st => st.name === stateName).statefp
+      // console.log('statefp', statefp)
+      
+      const sql = `
+                  SELECT jsonb_build_object(
+                    'type', 'FeatureCollection',
+                    'features', jsonb_agg(features.feature)
+                  )
+                  FROM (
+                    SELECT jsonb_build_object(
+                    'type', 'Feature',
+                    'geometry', ST_AsGeoJSON(geom,3)::jsonb,
+                    'properties', to_jsonb(inputs) - 'geom'
+                  ) AS feature
+                  FROM 
+                    (
+                    SELECT 
+                      county.geom,
+                      county.name, 
+                      max(pop.type) as type,
+                      COUNT(geo_points.geom) as geo_points_count,
+                      MAX(pop.pop_2019) as pop_2019,
+                      CASE 
+                        WHEN count(geo_points.geom) = 0 THEN max(pop.pop_2019) 
+                        ELSE max(pop.pop_2019) / count(geo_points.geom) 
+                      END
+                      AS persons_per_location
+                    FROM county county
+                    LEFT JOIN
+                    (
+                      SELECT 
+                        ST_SetSRID(ST_MAKEPOINT(longitude::double precision, latitude::double precision),4326) as geom, 
+                        longitude, latitude, name
+                      FROM public.${targetTable}
+                    )
+                    AS geo_points on ST_WITHIN(geo_points.geom, county.geom)
+                    LEFT JOIN population_county pop on pop.name = county.name
+                    WHERE county.statefp = '${statefp}'
+                    AND pop.statefp = '${statefp}'
+                    GROUP BY county.geom, county.name
+                    ORDER BY persons_per_location desc
+                    ) inputs
+                  ) features;`
+      
       let geo = await client.query(sql)
-      console.log('geo', geo)
-      
-              
-
-      // } catch (err) {
-      //   console.log('error', err)
-      //   await client.end()
-      // }
-      
-      
-  
+      await client.end()
+      resolve(geo.rows[0]['jsonb_build_object'])
+    })
   })
 }
 
-module.exports = { parseCsvToPgFrom }
+module.exports = { getGeoJsonFor }
 
