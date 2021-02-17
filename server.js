@@ -6,37 +6,22 @@ const app = express()
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
 
-//let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/ea92be31b5382266079042e50d4f7de6/raw/2cdd490a0b43b4e3b9906f2bc2e269ec6a63dc61/comedians.csv`
-//let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
-
-const populate = async () => {
-  let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
-  let newTable = await pgUtils.parseCsvToPgFrom(url, "California")
-  console.log('newTable', newTable)
-}
-
-//populate()
-
 app.get('/', (req, res, next) => {
   res.status(200).json(`Hello from nodejs-csv-sqlite3. The current server date/time is: ${new Date()}`)
 })
 
-app.get('/populate', async (req, res, next) => {
-
-  let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
-  let geojson = await pgUtils.parseCsvToPgFrom(url, "California")
-  
-  console.log('geojson', geojson)
-  
+app.post('/getPointGeojson', async (req, res, next) => {
+  const csvUrl = req.body.csvUrl//TODO:validate
+  const state = req.body.state//TODO:validate
+  const geojson = await pgUtils.getPointGeoJsonFor(csvUrl, state)
   res.status(200).json(geojson)
 })
 
-  
-
-app.post('/aggregateByCounty', (req, res, next) => {
-  // let url = `https://gist.githubusercontent.com/FergusDevelopmentLLC/2d2ef2fe6bf41bb7f10cb7a87efbb803/raw/1aaea6621e64892fd1fc9642bb14a729c892ffe8/animal_hospitals_ca.csv`
-  // pgUtils.parseCsvToPgFrom(url)
-  res.status(200).json(`aggregateByCounty`)
+app.post('/getCountyGeoJson', async (req, res, next) => {
+  const csvUrl = req.body.csvUrl//TODO:validate
+  const state = req.body.state//TODO:validate
+  const geojson = await pgUtils.getCountyGeoJsonFor(csvUrl, state)
+  res.status(200).json(geojson)
 })
 
 const server = app.listen(4070, () => {
