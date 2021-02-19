@@ -10,17 +10,25 @@ app.get('/', (req, res, next) => {
   res.status(200).json(`Hello from nodejs-csv-sqlite3. The current server date/time is: ${new Date()}`)
 })
 
-app.post('/getPointGeojson', async (req, res, next) => {
+app.post('/getPointGeoJson', async (req, res, next) => {
   const csvUrl = req.body.csvUrl//TODO:validate
   const state = req.body.state//TODO:validate
-  const geojson = await pgUtils.getPointGeoJsonFor(csvUrl, state)
-  res.status(200).json(geojson)
+
+  try {
+    const geojson = await pgUtils.getPointGeoJsonFor(csvUrl, state)
+    res.status(200).json(geojson)
+  }
+  catch(err) {
+    res.status(200).json(err)
+  }
+  
 })
 
 app.post('/getCountyGeoJson', async (req, res, next) => {
   const csvUrl = req.body.csvUrl//TODO:validate
   const state = req.body.state//TODO:validate
   const geojson = await pgUtils.getCountyGeoJsonFor(csvUrl, state)
+
   res.status(200).json(geojson)
 })
 
