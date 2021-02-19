@@ -95,6 +95,9 @@ const getCountyGeoJsonFor = (csvUrl, stateName) => {
 
       const statefp = states.find(st => st.name === stateName).statefp
       
+      const columnsStringWithPrefix = header.map(column => `max(geo_points.${column})`).join(",")
+      const columnsStringWithoutPrefix = header.map(column => `${column}`).join(",")
+
       const sql = `
                   SELECT jsonb_build_object(
                     'type', 'FeatureCollection',
@@ -110,8 +113,8 @@ const getCountyGeoJsonFor = (csvUrl, stateName) => {
                     (
                     SELECT 
                       county.geom,
-                      county.name, 
-                      max(pop.type) as type,
+                      ${columnsStringWithPrefix}
+                      ,max(pop.type) as type,
                       COUNT(geo_points.geom) as geo_points_count,
                       MAX(pop.pop_2019) as pop_2019,
                       CASE 
@@ -124,20 +127,26 @@ const getCountyGeoJsonFor = (csvUrl, stateName) => {
                     (
                       SELECT 
                         ST_SetSRID(ST_MAKEPOINT(longitude::double precision, latitude::double precision),4326) as geom, 
-                        longitude, latitude, name
-                      FROM public.${targetTable}
+                        ${ columnsStringWithoutPrefix }
+                      FROM ${targetTable}
                     )
                     AS geo_points on ST_WITHIN(geo_points.geom, county.geom)
                     LEFT JOIN population_county pop on pop.name = county.name
-                    WHERE county.statefp = '${statefp}'
-                    AND pop.statefp = '${statefp}'
+                    WHERE county.statefp = $1
+                    AND pop.statefp =  $1
                     GROUP BY county.geom, county.name
                     ORDER BY persons_per_location desc
                     ) inputs
                   ) features;`
+
+      console.log('sql', sql)
       
-      let geo = await client.query(sql)
+      const geo = await client.query(sql, [statefp])
+
+      await client.query(`DROP TABLE ${targetTable};`)
+
       await client.end()
+
       resolve(geo.rows[0]['jsonb_build_object'])
     })
   })
@@ -145,7 +154,7 @@ const getCountyGeoJsonFor = (csvUrl, stateName) => {
 
 const getPointGeoJsonFor = (csvUrl, stateName) => {
 
-  return new Promise(async (resolve) => {
+  return new Promise(async (resolve, reject) => {
     
     const client = new Client()
     await client.connect()
@@ -162,6 +171,18 @@ const getPointGeoJsonFor = (csvUrl, stateName) => {
       
       let header = csvData.shift()//get the first header line
 
+      let badData = false
+      header.forEach((column) => {
+        if (!column.match(/^[0-9A-Za-z_]+$/)) {
+          badData = true
+        }
+      })
+      
+      if(badData) {
+        reject("bad data detected.")
+        return
+      }
+      
       //build insert statements dynamically
       csvData.forEach((columnValues) => {
         let insert = `INSERT INTO ${ targetTable } (${header.map(value => value).join(',')}) VALUES (${header.map((value, i) => `$${i + 1}`)});`
@@ -169,15 +190,17 @@ const getPointGeoJsonFor = (csvUrl, stateName) => {
         inserts.push([insert, [...columnValues]])// example: ['INSERT INTO targetTable (col1,col2,col3) VALUES ($1,$2,$3)]', ['-121.225442','38.185269','Elaine Mary Dornton Dvm']
       })
 
+      
       const columnsString = header.map(column => `${column} character varying`).join(",")
-
-      //TODO, parameters don't seem to work with this sql
+      
       await client.query(`CREATE TABLE ${targetTable} ( ${columnsString} ) WITH ( OIDS=FALSE );`)
         
-      //TODO, parameters don't seem to work with this sql
       await client.query(`ALTER TABLE ${targetTable} OWNER TO geodevdb;`)
+      
+      inserts.forEach(async insert => await client.query(insert[0], insert[1]))//the inserts are parameterized
 
-      inserts.forEach(async insert => await client.query(insert[0], insert[1]))
+      const columnsStringWithPrefix = header.map(column => `geo_points.${column}`).join(",")
+      const columnsStringWithoutPrefix = header.map(column => `${column}`).join(",")
 
       const sql = `
                   SELECT jsonb_build_object(
@@ -195,26 +218,26 @@ const getPointGeoJsonFor = (csvUrl, stateName) => {
                     
                       SELECT
                         geo_points.geom,
-                        geo_points.longitude,
-                        geo_points.latitude,
-                        geo_points.name
+                        ${ columnsStringWithPrefix }
                       FROM state state
                       LEFT JOIN
                         (
                           SELECT 
                             ST_SetSRID(ST_MAKEPOINT(longitude::double precision, latitude::double precision),4326) as geom, 
-                            longitude, latitude, name
+                            ${ columnsStringWithoutPrefix }
                           FROM public.${targetTable}
                         ) AS geo_points on ST_WITHIN(geo_points.geom, state.geom)
-                      WHERE state.name = '${stateName}';
-
-
+                      WHERE state.name = $1'
                     
                     ) inputs
                   ) features;`
       
-      let geo = await client.query(sql)
+      const geo = await client.query(sql,[stateName])
+      
+      await client.query(`DROP TABLE ${targetTable};`)
+
       await client.end()
+
       resolve(geo.rows[0]['jsonb_build_object'])
     })
   })
